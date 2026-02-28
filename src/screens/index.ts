@@ -1,3 +1,6 @@
 export { default as HomeScreen } from './HomeScreen';
 export { default as QuizScreen } from './QuizScreen';
 export { default as ResultScreen } from './ResultScreen';
+export { default as RemoteControlScreen } from './RemoteControlScreen';
+export { default as DisplayScreen } from './DisplayScreen';
+export { default as ControllerScreen } from './ControllerScreen';
