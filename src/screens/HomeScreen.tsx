@@ -15,6 +15,7 @@ type RootStackParamList = {
   Home: undefined;
   Quiz: { examType: ExamType };
   Result: { examType: ExamType; answers: (boolean | null)[]; questionIds: string[] };
+  RemoteControl: undefined;
 };
 
 type HomeScreenProps = {
@@ -51,6 +52,20 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* 리모컨 버튼 */}
+        <TouchableOpacity
+          style={styles.remoteButton}
+          onPress={() => navigation.navigate('RemoteControl')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.remoteIcon}>📡</Text>
+          <View style={styles.remoteInfo}>
+            <Text style={styles.remoteName}>리모컨</Text>
+            <Text style={styles.remoteDescription}>다른 기기에서 퀴즈를 원격 제어</Text>
+          </View>
+          <Text style={styles.arrow}>→</Text>
+        </TouchableOpacity>
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>
@@ -122,6 +137,38 @@ const styles = StyleSheet.create({
   arrow: {
     fontSize: 24,
     color: '#4299E1',
+  },
+  remoteButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    marginTop: 24,
+    borderWidth: 2,
+    borderColor: '#9F7AEA',
+  },
+  remoteIcon: {
+    fontSize: 40,
+    marginRight: 16,
+  },
+  remoteInfo: {
+    flex: 1,
+  },
+  remoteName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#553C9A',
+    marginBottom: 4,
+  },
+  remoteDescription: {
+    fontSize: 14,
+    color: '#9F7AEA',
   },
   footer: {
     marginTop: 40,
