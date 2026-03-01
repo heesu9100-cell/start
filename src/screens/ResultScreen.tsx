@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,12 +10,14 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { questions as allQuestions, examInfoList } from '../data/questions';
-import { ExamType, Question } from '../types';
+import { ExamType, Question, categoryNames, difficultyNames } from '../types';
+import { saveStudyRecord, generateRecordId } from '../utils/storage';
 
 type RootStackParamList = {
   Home: undefined;
   Quiz: { examType: ExamType };
-  Result: { examType: ExamType; answers: (boolean | null)[]; questionIds: string[] };
+  Result: { examType: ExamType; answers: (boolean | null)[]; questionIds: string[]; startTime: number };
+  Stats: undefined;
 };
 
 type ResultScreenProps = {
@@ -30,8 +32,9 @@ interface QuestionResult {
 }
 
 export default function ResultScreen({ navigation, route }: ResultScreenProps) {
-  const { examType, answers, questionIds } = route.params;
+  const { examType, answers, questionIds, startTime } = route.params;
   const examInfo = examInfoList.find((e) => e.id === examType);
+  const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
 
   const results = useMemo<QuestionResult[]>(() => {
     return questionIds.map((id, index) => {
@@ -49,34 +52,82 @@ export default function ResultScreen({ navigation, route }: ResultScreenProps) {
   const totalCount = results.length;
   const percentage = Math.round((correctCount / totalCount) * 100);
 
+  // 학습 기록 저장
+  useEffect(() => {
+    const record = {
+      id: generateRecordId(),
+      examType,
+      totalQuestions: totalCount,
+      correctAnswers: correctCount,
+      percentage,
+      elapsedSeconds,
+      completedAt: new Date().toISOString(),
+      wrongQuestionIds: results.filter((r) => !r.isCorrect).map((r) => r.question.id),
+    };
+    saveStudyRecord(record);
+  }, []);
+
+  const formatTime = (seconds: number) => {
+    const min = Math.floor(seconds / 60);
+    const sec = seconds % 60;
+    return `${min}분 ${sec}초`;
+  };
+
   const getScoreColor = () => {
-    if (percentage >= 80) return '#48BB78';
-    if (percentage >= 60) return '#ECC94B';
-    return '#FC8181';
+    if (percentage >= 80) return '#34D399';
+    if (percentage >= 60) return '#FBBF24';
+    return '#F87171';
   };
 
   const getScoreMessage = () => {
+    if (percentage === 100) return '완벽합니다!';
     if (percentage >= 80) return '훌륭합니다!';
     if (percentage >= 60) return '좋은 성적이에요!';
     if (percentage >= 40) return '조금 더 노력해보세요!';
     return '복습이 필요해요!';
   };
 
+  const getScoreEmoji = () => {
+    if (percentage === 100) return '🏆';
+    if (percentage >= 80) return '🎉';
+    if (percentage >= 60) return '👍';
+    if (percentage >= 40) return '💪';
+    return '📖';
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Score Card */}
         <View style={styles.scoreCard}>
-          <Text style={styles.examName}>{examInfo?.name}</Text>
+          <Text style={styles.scoreEmoji}>{getScoreEmoji()}</Text>
+          <Text style={styles.scoreMessage}>{getScoreMessage()}</Text>
+
           <View style={styles.scoreCircle}>
             <Text style={[styles.scorePercentage, { color: getScoreColor() }]}>
-              {percentage}%
+              {percentage}
             </Text>
-            <Text style={styles.scoreDetail}>
-              {correctCount} / {totalCount}
-            </Text>
+            <Text style={styles.scorePercent}>%</Text>
           </View>
-          <Text style={styles.scoreMessage}>{getScoreMessage()}</Text>
+
+          <View style={styles.scoreDetails}>
+            <View style={styles.scoreDetailItem}>
+              <Text style={styles.scoreDetailValue}>{correctCount}</Text>
+              <Text style={styles.scoreDetailLabel}>정답</Text>
+            </View>
+            <View style={styles.scoreDetailDivider} />
+            <View style={styles.scoreDetailItem}>
+              <Text style={[styles.scoreDetailValue, styles.wrongValue]}>
+                {totalCount - correctCount}
+              </Text>
+              <Text style={styles.scoreDetailLabel}>오답</Text>
+            </View>
+            <View style={styles.scoreDetailDivider} />
+            <View style={styles.scoreDetailItem}>
+              <Text style={styles.scoreDetailValue}>{formatTime(elapsedSeconds)}</Text>
+              <Text style={styles.scoreDetailLabel}>소요시간</Text>
+            </View>
+          </View>
         </View>
 
         {/* Results List */}
@@ -85,48 +136,64 @@ export default function ResultScreen({ navigation, route }: ResultScreenProps) {
 
           {results.map((result, index) => (
             <View key={result.question.id} style={styles.resultItem}>
+              {/* Result Header */}
               <View style={styles.resultHeader}>
                 <View style={styles.resultHeaderLeft}>
                   <View style={[
                     styles.resultBadge,
                     result.isCorrect ? styles.correctBadge : styles.wrongBadge
                   ]}>
-                    <Text style={styles.resultBadgeText}>
+                    <Text style={[
+                      styles.resultBadgeText,
+                      result.isCorrect ? styles.correctBadgeText : styles.wrongBadgeText
+                    ]}>
                       {result.isCorrect ? '정답' : '오답'}
                     </Text>
                   </View>
                   <Text style={styles.questionNumber}>Q{index + 1}</Text>
+                  <View style={[
+                    styles.diffBadge,
+                    result.question.difficulty === 'easy' && styles.diffEasy,
+                    result.question.difficulty === 'medium' && styles.diffMedium,
+                    result.question.difficulty === 'hard' && styles.diffHard,
+                  ]}>
+                    <Text style={styles.diffText}>
+                      {difficultyNames[result.question.difficulty]}
+                    </Text>
+                  </View>
                 </View>
                 <View style={styles.answerInfo}>
                   <Text style={styles.answerLabel}>
-                    내 답: <Text style={result.isCorrect ? styles.correctText : styles.wrongText}>
-                      {result.userAnswer === null ? '-' : result.userAnswer ? 'O' : 'X'}
-                    </Text>
-                  </Text>
-                  <Text style={styles.answerLabel}>
-                    정답: <Text style={styles.correctText}>
-                      {result.question.answer ? 'O' : 'X'}
-                    </Text>
+                    {result.userAnswer === null ? '-' : result.userAnswer ? 'O' : 'X'}
+                    {' → '}
+                    {result.question.answer ? 'O' : 'X'}
                   </Text>
                 </View>
               </View>
 
+              {/* Question Content */}
               <Text style={styles.questionContent}>{result.question.content}</Text>
+
+              {/* Key Point */}
+              <View style={styles.keyPointBox}>
+                <Text style={styles.keyPointLabel}>핵심</Text>
+                <Text style={styles.keyPointText}>
+                  {result.question.explanation.keyPoint}
+                </Text>
+              </View>
 
               {/* Explanation */}
               <View style={styles.explanationBox}>
-                <Text style={styles.explanationTitle}>해설</Text>
-
                 {result.question.explanation.articleRef && (
-                  <View style={styles.refBox}>
-                    <Text style={styles.refLabel}>📜 조문</Text>
+                  <View style={styles.refRow}>
+                    <Text style={styles.refIcon}>📜</Text>
                     <Text style={styles.refText}>{result.question.explanation.articleRef}</Text>
                   </View>
                 )}
 
                 {result.question.explanation.precedentRef && (
-                  <View style={styles.refBox}>
-                    <Text style={styles.refLabel}>⚖️ 판례</Text>
+                  <View style={styles.refRow}>
+                    <Text style={styles.refIcon}>⚖️</Text>
                     <Text style={styles.refText}>{result.question.explanation.precedentRef}</Text>
                   </View>
                 )}
@@ -144,15 +211,17 @@ export default function ResultScreen({ navigation, route }: ResultScreenProps) {
           <TouchableOpacity
             style={styles.retryButton}
             onPress={() => navigation.replace('Quiz', { examType })}
+            activeOpacity={0.7}
           >
-            <Text style={styles.retryButtonText}>다시 풀기</Text>
+            <Text style={styles.retryButtonText}>🔄 다시 풀기</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.homeButton}
             onPress={() => navigation.popToTop()}
+            activeOpacity={0.7}
           >
-            <Text style={styles.homeButtonText}>홈으로</Text>
+            <Text style={styles.homeButtonText}>🏠 홈으로</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -163,72 +232,96 @@ export default function ResultScreen({ navigation, route }: ResultScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: '#0F172A',
   },
   scrollContent: {
     padding: 20,
+    paddingBottom: 40,
   },
+  // Score Card
   scoreCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 30,
+    backgroundColor: '#1E293B',
+    borderRadius: 24,
+    padding: 28,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
     marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#334155',
   },
-  examName: {
-    fontSize: 16,
-    color: '#718096',
+  scoreEmoji: {
+    fontSize: 48,
+    marginBottom: 8,
+  },
+  scoreMessage: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#F8FAFC',
     marginBottom: 20,
   },
   scoreCircle: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: '#F7FAFC',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-    borderWidth: 6,
-    borderColor: '#E2E8F0',
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginBottom: 24,
   },
   scorePercentage: {
-    fontSize: 42,
+    fontSize: 72,
     fontWeight: 'bold',
   },
-  scoreDetail: {
-    fontSize: 16,
-    color: '#718096',
-    marginTop: 4,
+  scorePercent: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#64748B',
+    marginLeft: 4,
   },
-  scoreMessage: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1A365D',
+  scoreDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    width: '100%',
+    backgroundColor: '#0F172A',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
   },
+  scoreDetailItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  scoreDetailValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#34D399',
+    marginBottom: 4,
+  },
+  wrongValue: {
+    color: '#F87171',
+  },
+  scoreDetailLabel: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  scoreDetailDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: '#334155',
+  },
+  // Results
   resultsContainer: {
     marginBottom: 24,
   },
   resultsTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#1A365D',
+    fontWeight: 'bold',
+    color: '#F8FAFC',
     marginBottom: 16,
   },
   resultItem: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#1E293B',
     borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
   },
   resultHeader: {
     flexDirection: 'row',
@@ -247,108 +340,137 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   correctBadge: {
-    backgroundColor: '#C6F6D5',
+    backgroundColor: 'rgba(52, 211, 153, 0.15)',
   },
   wrongBadge: {
-    backgroundColor: '#FED7D7',
+    backgroundColor: 'rgba(248, 113, 113, 0.15)',
   },
   resultBadgeText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#1A365D',
+    fontWeight: '700',
+  },
+  correctBadgeText: {
+    color: '#34D399',
+  },
+  wrongBadgeText: {
+    color: '#F87171',
   },
   questionNumber: {
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#60A5FA',
+  },
+  diffBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  diffEasy: {
+    backgroundColor: 'rgba(52, 211, 153, 0.1)',
+  },
+  diffMedium: {
+    backgroundColor: 'rgba(251, 191, 36, 0.1)',
+  },
+  diffHard: {
+    backgroundColor: 'rgba(248, 113, 113, 0.1)',
+  },
+  diffText: {
+    fontSize: 10,
     fontWeight: '600',
-    color: '#4299E1',
+    color: '#94A3B8',
   },
   answerInfo: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
   },
   answerLabel: {
     fontSize: 14,
-    color: '#4A5568',
-  },
-  correctText: {
-    color: '#2F855A',
-    fontWeight: '600',
-  },
-  wrongText: {
-    color: '#C53030',
-    fontWeight: '600',
-  },
-  questionContent: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: '#2D3748',
-    marginBottom: 16,
-  },
-  explanationBox: {
-    backgroundColor: '#F7FAFC',
-    borderRadius: 12,
-    padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#4299E1',
-  },
-  explanationTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4299E1',
-    marginBottom: 12,
-  },
-  refBox: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-  },
-  refLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#718096',
-    marginBottom: 4,
-  },
-  refText: {
-    fontSize: 14,
-    color: '#2D3748',
+    color: '#94A3B8',
     fontWeight: '500',
   },
-  explanationDetail: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: '#4A5568',
-    marginTop: 8,
+  questionContent: {
+    fontSize: 15,
+    lineHeight: 23,
+    color: '#CBD5E1',
+    marginBottom: 12,
   },
+  keyPointBox: {
+    backgroundColor: 'rgba(96, 165, 250, 0.1)',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#60A5FA',
+  },
+  keyPointLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#60A5FA',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  keyPointText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#E2E8F0',
+    lineHeight: 20,
+  },
+  explanationBox: {
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    padding: 14,
+  },
+  refRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  refIcon: {
+    fontSize: 14,
+  },
+  refText: {
+    fontSize: 13,
+    color: '#CBD5E1',
+    fontWeight: '500',
+    flex: 1,
+  },
+  explanationDetail: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#94A3B8',
+    marginTop: 4,
+  },
+  // Actions
   actionContainer: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 30,
+    marginBottom: 20,
   },
   retryButton: {
     flex: 1,
-    backgroundColor: '#4299E1',
+    backgroundColor: '#3B82F6',
     paddingVertical: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
   },
   retryButtonText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#FFFFFF',
   },
   homeButton: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#1E293B',
     paddingVertical: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#E2E8F0',
+    borderWidth: 1,
+    borderColor: '#334155',
   },
   homeButtonText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#4A5568',
+    fontWeight: '700',
+    color: '#CBD5E1',
   },
 });
